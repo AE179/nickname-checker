@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Verifique a disponibilidade de nicks do Minecraft de forma rápida e fácil">
+    <title>Minecraft Nickname Checker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 Minecraft Nickname Checker</h1>
+            <p class="subtitle">Verifique se os nicks estão disponíveis no Minecraft</p>
+        </header>
+        
+        <main>
+            <section class="input-section" aria-label="Entrada de nicks">
+                <label for="nickInput" class="sr-only">Lista de nicks para verificar</label>
+                <textarea 
+                    id="nickInput" 
+                    placeholder="Cole os nicks aqui, um por linha...&#10;Exemplo:&#10;Steve&#10;Alex&#10;Notch"
+                    rows="10"
+                    aria-label="Campo de texto para inserir nicks do Minecraft"
+                ></textarea>
+                
+                <div class="button-group">
+                    <button id="checkButton" class="btn btn-primary" aria-label="Iniciar verificação de nicks">
+                        Verificar Nicks
+                    </button>
+                    <button id="clearButton" class="btn btn-secondary" aria-label="Limpar lista de nicks">
+                        Limpar
+                    </button>
+                </div>
+            </section>
+
+            <section class="stats-section" aria-label="Estatísticas da verificação">
+                <div class="stat">
+                    <span class="stat-label">Total</span>
+                    <span id="totalCount" class="stat-value" aria-live="polite">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Disponíveis</span>
+                    <span id="availableCount" class="stat-value available" aria-live="polite">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Indisponíveis</span>
+                    <span id="unavailableCount" class="stat-value unavailable" aria-live="polite">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Verificando</span>
+                    <span id="checkingCount" class="stat-value" aria-live="polite">0</span>
+                </div>
+            </section>
+
+            <section class="results-section" aria-label="Resultados da verificação">
+                <div id="resultsContainer"></div>
+            </section>
+
+            <section class="available-list-section" id="availableListSection" aria-label="Nicks disponíveis" style="display: none;">
+                <h2 class="available-list-title">✨ Nicks Disponíveis</h2>
+                <div id="availableListContainer" class="available-list-container"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -125,38 +125,49 @@ async function checkNickAvailability(nick) {
                 
                 const trimmedText = text.trim();
                 
-                // Se resposta está vazia ou é explicitamente indicando que não existe
+                // Se resposta está vazia ou é explicitamente "não encontrado" = INDISPONÍVEL
                 if (trimmedText === '' || 
-                    trimmedText === 'null' || 
-                    trimmedText.toLowerCase() === 'not found') {
-                    return true; // Disponível
+                    trimmedText === 'null') {
+                    // Vazio pode significar que não encontrou = INDISPONÍVEL
+                    return false; // INDISPONÍVEL
+                }
+                
+                // Verifica se tem mensagem de "não encontrado"
+                const lowerText = trimmedText.toLowerCase();
+                if (lowerText.includes('não foi encontrado') || 
+                    lowerText.includes('not found') ||
+                    lowerText.includes('não encontrado')) {
+                    return false; // INDISPONÍVEL (mensagem de não encontrado)
                 }
                 
                 // Tenta parsear JSON
                 try {
                     const data = JSON.parse(text);
                     
-                    // API da Mojang quando um nick EXISTE retorna: {"id":"uuid","name":"nickname"}
-                    // Verificação PRINCIPAL: Se tem 'id' OU 'name', o nick EXISTE = NÃO disponível
-                    if (data && typeof data === 'object' && (data.id || data.name)) {
-                        // CRITÉRIO PRINCIPAL: Se tem id ou name, nick existe
-                        // id é UUID do Minecraft, name é o nickname
-                        // Qualquer um dos dois indica que o nick existe
-                        return false; // NÃO disponível
+                    // Lógica invertida conforme especificado:
+                    // Se retornar nick e id = DISPONÍVEL (nick disponível)
+                    // Se retornar "não encontrado" = INDISPONÍVEL
+                    
+                    if (data && typeof data === 'object') {
+                        // Se tem id E/OU name, significa que retornou o nick = DISPONÍVEL
+                        if (data.id || data.name) {
+                            return true; // DISPONÍVEL (retornou nick e id)
+                        }
+                        
+                        // Se tem mensagem de erro ou "não encontrado" = INDISPONÍVEL
+                        if (data.error || data.errorMessage || 
+                            text.toLowerCase().includes('não foi encontrado') ||
+                            text.toLowerCase().includes('not found') ||
+                            text.toLowerCase().includes('não encontrado')) {
+                            return false; // INDISPONÍVEL (não encontrado)
+                        }
+                        
+                        // Objeto vazio = precisa verificar melhor
+                        // Por padrão, se não tem id/name, assume DISPONÍVEL
+                        return true;
                     }
                     
-                    // Se chegou aqui, retornou 200 com JSON mas SEM id/name
-                    // Pode ser:
-                    // 1. Objeto vazio {}
-                    // 2. Objeto de erro {"error": "..."}
-                    // 3. Alguma resposta estranha do proxy
-                    
-                    // Verifica se é objeto de erro
-                    if (data.error || data.errorMessage) {
-                        return true; // Erro = nick não encontrado = disponível
-                    }
-                    
-                    // Objeto vazio ou sem id/name = disponível
+                    // JSON válido mas não é objeto = DISPONÍVEL
                     return true;
                     
                 } catch (e) {
@@ -174,8 +185,8 @@ async function checkNickAvailability(nick) {
                     return true;
                 }
             } else if (status === 204 || status === 404) {
-                // Nick não existe = disponível
-                return true;
+                // 204/404 = não encontrado = INDISPONÍVEL (conforme lógica especificada)
+                return false;
             } else if (status === 403 || status === 429) {
                 // 403 Forbidden ou 429 Too Many Requests - tenta próximo proxy
                 lastError = new Error(`Status HTTP ${status}: ${response.statusText}`);

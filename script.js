@@ -98,6 +98,7 @@ async function checkNickAvailability(nick) {
     ];
     
     let lastError = null;
+    const nickLower = nick.toLowerCase();
     
     // Tenta cada proxy até um funcionar
     for (let i = 0; i < corsProxies.length; i++) {
@@ -122,71 +123,90 @@ async function checkNickAvailability(nick) {
             if (status === 200) {
                 // Para qualquer resposta 200, precisa verificar o conteúdo
                 const text = await response.text();
-                
                 const trimmedText = text.trim();
                 
-                // Se resposta está vazia ou é explicitamente "não encontrado" = INDISPONÍVEL
-                if (trimmedText === '' || 
-                    trimmedText === 'null') {
-                    // Vazio pode significar que não encontrou = INDISPONÍVEL
-                    return false; // INDISPONÍVEL
-                }
-                
-                // Verifica se tem mensagem de "não encontrado"
-                const lowerText = trimmedText.toLowerCase();
-                if (lowerText.includes('não foi encontrado') || 
-                    lowerText.includes('not found') ||
-                    lowerText.includes('não encontrado')) {
-                    return false; // INDISPONÍVEL (mensagem de não encontrado)
+                // Se resposta está vazia, NÃO assume nada - tenta próximo proxy
+                // (pode ser erro do proxy)
+                if (trimmedText === '' || trimmedText === 'null') {
+                    if (!isProxy) {
+                        // API direta retornou vazio = disponível
+                        return true;
+                    }
+                    // Proxy retornou vazio = pode ser erro, tenta próximo
+                    lastError = new Error('Resposta vazia do proxy');
+                    continue;
                 }
                 
                 // Tenta parsear JSON
                 try {
                     const data = JSON.parse(text);
                     
-                    // Lógica invertida conforme especificado:
-                    // Se retornar nick e id = DISPONÍVEL (nick disponível)
-                    // Se retornar "não encontrado" = INDISPONÍVEL
-                    
+                    // API da Mojang: quando um nick EXISTE retorna {"id":"uuid","name":"nickname"}
                     if (data && typeof data === 'object') {
-                        // Se tem id E/OU name, significa que retornou o nick = DISPONÍVEL
-                        if (data.id || data.name) {
-                            return true; // DISPONÍVEL (retornou nick e id)
+                        // Verificação principal: se tem id OU name, o nick EXISTE = INDISPONÍVEL
+                        const hasId = data.id && typeof data.id === 'string' && data.id.length > 0;
+                        const hasName = data.name && typeof data.name === 'string' && data.name.length > 0;
+                        
+                        // CRITÉRIO PRINCIPAL: Se tem id OU name = nick EXISTE = INDISPONÍVEL
+                        if (hasId || hasName) {
+                            return false; // INDISPONÍVEL - CERTEZA
                         }
                         
-                        // Se tem mensagem de erro ou "não encontrado" = INDISPONÍVEL
-                        if (data.error || data.errorMessage || 
-                            text.toLowerCase().includes('não foi encontrado') ||
-                            text.toLowerCase().includes('not found') ||
-                            text.toLowerCase().includes('não encontrado')) {
-                            return false; // INDISPONÍVEL (não encontrado)
+                        // Se tem erro explícito = nick não encontrado = DISPONÍVEL
+                        if (data.error || data.errorMessage) {
+                            return true; // DISPONÍVEL
                         }
                         
-                        // Objeto vazio = precisa verificar melhor
-                        // Por padrão, se não tem id/name, assume DISPONÍVEL
-                        return true;
+                        // Objeto vazio {} = se for API direta, disponível. Se for proxy, pode ser erro
+                        if (Object.keys(data).length === 0) {
+                            if (!isProxy) {
+                                return true; // DISPONÍVEL (API direta retornou objeto vazio)
+                            }
+                            // Proxy pode estar com erro, tenta próximo
+                            lastError = new Error('Objeto vazio do proxy');
+                            continue;
+                        }
+                        
+                        // Objeto com propriedades desconhecidas
+                        // Por segurança, assume INDISPONÍVEL se não conseguir identificar
+                        return false;
                     }
                     
-                    // JSON válido mas não é objeto = DISPONÍVEL
-                    return true;
+                    // JSON válido mas não é objeto = pode ser erro, tenta próximo
+                    lastError = new Error('Resposta JSON não é objeto');
+                    continue;
                     
                 } catch (e) {
                     // Não conseguiu parsear JSON
-                    // Se não conseguiu parsear e texto não está vazio, algo estranho
-                    // Para proxies, pode retornar HTML ou outros formatos
-                    // Por segurança, se é proxy assume disponível
-                    // Se é API direta e não parseou, algo errado - assume NÃO disponível por segurança
+                    // Verifica se o texto contém indicadores de que o nick existe
+                    const lowerText = trimmedText.toLowerCase();
+                    
+                    // Se contém o nick E id OU name, provavelmente indisponível
+                    if (lowerText.includes(nickLower) && 
+                        (lowerText.includes('"id"') || lowerText.includes('"name"') || 
+                         lowerText.includes('id:') || lowerText.includes('name:'))) {
+                        return false; // INDISPONÍVEL
+                    }
+                    
+                    // Se é API direta e não parseou, algo está errado
                     if (!isProxy) {
-                        // API direta retornou 200 mas não é JSON válido = erro
-                        // Por segurança, assume NÃO disponível para não marcar errado um que pode estar ocupado
+                        // Por segurança, assume INDISPONÍVEL para não dar falso positivo
                         return false;
                     }
-                    // Proxy pode retornar formatos diferentes
-                    return true;
+                    
+                    // Proxy com resposta não-JSON = pode ser erro, tenta próximo
+                    lastError = new Error('Resposta não é JSON válido');
+                    continue;
                 }
             } else if (status === 204 || status === 404) {
-                // 204/404 = não encontrado = INDISPONÍVEL (conforme lógica especificada)
-                return false;
+                // 204/404 = não encontrado = DISPONÍVEL
+                // MAS só confia se for da API direta
+                if (!isProxy) {
+                    return true; // DISPONÍVEL
+                }
+                // Proxy pode estar retornando 404 por erro, tenta próximo
+                lastError = new Error(`Status ${status} do proxy pode ser erro`);
+                continue;
             } else if (status === 403 || status === 429) {
                 // 403 Forbidden ou 429 Too Many Requests - tenta próximo proxy
                 lastError = new Error(`Status HTTP ${status}: ${response.statusText}`);

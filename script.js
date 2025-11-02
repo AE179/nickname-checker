@@ -123,26 +123,55 @@ async function checkNickAvailability(nick) {
                 // Para qualquer resposta 200, precisa verificar o conteúdo
                 const text = await response.text();
                 
-                if (text.trim() === '' || text === 'null' || text === 'Not Found' || text.toLowerCase() === 'not found') {
-                    // Resposta vazia = nick disponível
-                    return true;
+                const trimmedText = text.trim();
+                
+                // Se resposta está vazia ou é explicitamente indicando que não existe
+                if (trimmedText === '' || 
+                    trimmedText === 'null' || 
+                    trimmedText.toLowerCase() === 'not found') {
+                    return true; // Disponível
                 }
                 
+                // Tenta parsear JSON
                 try {
                     const data = JSON.parse(text);
-                    // Se tem dados JSON válidos com id ou name, nick não está disponível
-                    if (data && (data.id || data.name)) {
-                        return false; // Não disponível
+                    
+                    // API da Mojang quando um nick EXISTE retorna: {"id":"uuid","name":"nickname"}
+                    // Verificação PRINCIPAL: Se tem 'id' OU 'name', o nick EXISTE = NÃO disponível
+                    if (data && typeof data === 'object' && (data.id || data.name)) {
+                        // CRITÉRIO PRINCIPAL: Se tem id ou name, nick existe
+                        // id é UUID do Minecraft, name é o nickname
+                        // Qualquer um dos dois indica que o nick existe
+                        return false; // NÃO disponível
                     }
-                    // JSON válido mas sem id/name = disponível
+                    
+                    // Se chegou aqui, retornou 200 com JSON mas SEM id/name
+                    // Pode ser:
+                    // 1. Objeto vazio {}
+                    // 2. Objeto de erro {"error": "..."}
+                    // 3. Alguma resposta estranha do proxy
+                    
+                    // Verifica se é objeto de erro
+                    if (data.error || data.errorMessage) {
+                        return true; // Erro = nick não encontrado = disponível
+                    }
+                    
+                    // Objeto vazio ou sem id/name = disponível
                     return true;
+                    
                 } catch (e) {
-                    // Se não conseguir parsear JSON e não está vazio, provavelmente não disponível
-                    // Mas por segurança, considera disponível se for resposta de proxy
-                    if (isProxy) {
-                        return true;
+                    // Não conseguiu parsear JSON
+                    // Se não conseguiu parsear e texto não está vazio, algo estranho
+                    // Para proxies, pode retornar HTML ou outros formatos
+                    // Por segurança, se é proxy assume disponível
+                    // Se é API direta e não parseou, algo errado - assume NÃO disponível por segurança
+                    if (!isProxy) {
+                        // API direta retornou 200 mas não é JSON válido = erro
+                        // Por segurança, assume NÃO disponível para não marcar errado um que pode estar ocupado
+                        return false;
                     }
-                    return false;
+                    // Proxy pode retornar formatos diferentes
+                    return true;
                 }
             } else if (status === 204 || status === 404) {
                 // Nick não existe = disponível
